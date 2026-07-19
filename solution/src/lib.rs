@@ -1,5 +1,6 @@
 use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Mutex, RwLock};
+use std::thread;
 use std::time::{Duration, Instant};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -132,7 +133,27 @@ impl RateLimiter {
     }
 
     pub fn acquire(&self, key: &str, timeout: Duration) -> Outcome {
-        todo!()
+        self.acquire_cost(key, 1, timeout)
+    }
+
+    pub fn acquire_cost(&self, key: &str, cost: u64, timeout: Duration) -> Outcome {
+        let deadline = Instant::now() + timeout;
+        loop {
+            let out = self.try_acquire_cost(key, cost);
+            if out.allowed {
+                return out;
+            }
+            let wait = match out.retry_after {
+                None => return out,
+                Some(w) => w,
+            };
+            let now = Instant::now();
+            if now >= deadline {
+                return out;
+            }
+            let remaining = deadline - now;
+            thread::sleep(wait.min(remaining));
+        }
     }
 
     pub fn with_idle_ttl(mut self, ttl: Duration) -> Self {
@@ -141,15 +162,29 @@ impl RateLimiter {
     }
 
     pub fn tracked_keys(&self) -> usize {
-        todo!()
+        self.keys.read().unwrap().len()
     }
 
     pub fn is_tracked(&self, key: &str) -> bool {
-        todo!()
+        self.keys.read().unwrap().contains_key(key)
     }
 
     pub fn evict_idle(&self) -> usize {
-        todo!()
+        let ttl = match self.idle_ttl {
+            Some(t) => t,
+            None => return 0,
+        };
+
+        let now = Instant::now();
+
+        let mut map = self.keys.write().unwrap();
+        let before = map.len();
+
+        map.retain(|_, entry| {
+            let e = entry.lock().unwrap();
+            now.duration_since(e.last_activity) <= ttl
+        });
+        before - map.len()
     }
 
     fn entry_for(&self, key: &str, now: Instant) -> Arc<Mutex<Entry>> {
@@ -158,12 +193,14 @@ impl RateLimiter {
         }
 
         let mut map = self.keys.write().unwrap();
-        map.entry(key.to_string()).or_insert_with(|| {
-            Arc::new(Mutex::new(Entry {
-                state: self.strategy.fresh_state(now),
-                last_activity: now,
-            }))
-        }).clone()
+        map.entry(key.to_string())
+            .or_insert_with(|| {
+                Arc::new(Mutex::new(Entry {
+                    state: self.strategy.fresh_state(now),
+                    last_activity: now,
+                }))
+            })
+            .clone()
     }
 }
 

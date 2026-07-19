@@ -55,7 +55,9 @@ Finished designing sketching the public API and set the contructors in place as 
 Added the per-key lookup helper instead of duplicating the map logic everywhere. Ended up matching on the strategy after locking the entry so both algorithms can share the same flow
 I also changed the implementation order slightly since both algorithms share the same entry path hance it was easire to get both non-blocking strategies working first and then build blocking acquire on top
 Had to change deny to take Option<Duration> — my first version forced a concrete Duration, but a request that can never succeed (cost > capacity, or refill=0) has no retry time to give. None = "don't bother waiting.
-### [HH:MM]
+
+### [11:36]
+Was thinking acquire() would be its own implementation but it's really just retry + sleep around try_acquire_cost() finished the cleanup helpers toothe lib now feels feature complete, now I can move on to validating behaviour
 
 ## Research / References
 
