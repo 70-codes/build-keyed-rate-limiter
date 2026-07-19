@@ -6,11 +6,10 @@
 
 ## Initial Reaction
 
-<!-- First 5 minutes, before you touch any code.
-     - What's your gut take on the problem?
-     - What feels like the hard part?
-     - What approaches do you see? Which would you rule out and why?
-     - Anything you're already unsure about? -->
+I need two alogorithms behing the same API and also check up the logic used by the algorithms for a deeper understanding
+I have to read on suitability between SystemTime and instant
+The concurrency requirement will probably be the trickiest part. I need to guarantee that multiple callers can't over-admit permits while also avoiding unnecessary contention between unrelated API keys
+Timing is also important. I already know I don't want to use wall-clock time because adjustments to the system clock would affect refill calculations
 
 ## Plan
 
@@ -19,6 +18,16 @@
      - What are the key design decisions you're making up front?
      - What are you deliberately deferring?
      - What will you build FIRST — the smallest slice that proves something useful? -->
+I'll create a folder named solution and inside the folder i'll have the src folder which will contain the library crate as lib.rs and an entry point for implementing the library as main.rs which is where the library will be consumed
+I'll use instant for refill calculations instead of SystemTime because refill math shouldn't depend on wall clock. (instant documentation - https://doc.rust-lang.org/std/time/struct.Instant.html)
+
+- get API shape right first
+- implement token bucket
+- then retry_after + blocking acquire
+- sliding window after that
+- cleanup last
+
+Not touching concurrency until basic limiter works.
 
 ## Progress Notes
 
@@ -33,7 +42,8 @@
      Imagine your pair partner just asked "what are you doing?" — answer that.
      Add as many entries as you need. -->
 
-### [HH:MM]
+### [08:26]
+Initialized the repo by creating the files and filled up some section of the thinking.md
 
 ### [HH:MM]
 
@@ -47,6 +57,9 @@
 
 <!-- Optional. Any docs, articles, past code, or language references you looked at.
      A one-line note on what you took from each is enough. -->
+Instant- Documentation url (https://doc.rust-lang.org/std/time/struct.Instant.html) - Contained what i exactly needed which is a monotonic clock
+
+Duration - Documentation url (https://doc.rust-lang.org/std/time/struct.Duration.html) - Mostly checking helper methods.
 
 ## Retrospective
 
