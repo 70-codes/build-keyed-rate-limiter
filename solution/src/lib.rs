@@ -23,10 +23,10 @@ impl Outcome {
         }
     }
 
-    pub fn deny(retry_after: Duration) -> Self {
+    pub fn deny(retry_after: Option<Duration>) -> Self {
         Outcome {
             allowed: false,
-            retry_after: Some(retry_after),
+            retry_after,
         }
     }
 }
@@ -42,6 +42,21 @@ enum Strategy {
     SlidingWindow { limit: u64, window: Duration },
 }
 
+impl Strategy {
+    fn fresh_state(&self, now: Instant) -> KeyState {
+        match self {
+            Strategy::TokenBucket { capacity, .. } => KeyState::TokenBucket {
+                tokens: *capacity,
+                last_refill: now,
+            },
+
+            Strategy::SlidingWindow { .. } => KeyState::SlidingWindow {
+                grants: VecDeque::new(),
+            },
+        }
+    }
+}
+
 struct Entry {
     state: KeyState,
     last_activity: Instant,
@@ -52,7 +67,6 @@ pub struct RateLimiter {
     idle_ttl: Option<Duration>,
     keys: RwLock<HashMap<String, Arc<Mutex<Entry>>>>,
 }
-
 
 impl RateLimiter {
     pub fn token_bucket(capacity: f64, refill_per_sec: f64) -> Self {
@@ -65,24 +79,56 @@ impl RateLimiter {
             keys: RwLock::new(HashMap::new()),
         }
     }
-    
+
     pub fn sliding_window(limit: u64, window: Duration) -> Self {
         Self {
-            strategy: Strategy::SlidingWindow {
-                limit,
-                window,
-            },
+            strategy: Strategy::SlidingWindow { limit, window },
             idle_ttl: None,
             keys: RwLock::new(HashMap::new()),
         }
     }
 
     pub fn try_acquire(&self, key: &str) -> Outcome {
-        todo!()
+        self.try_acquire_cost(key, 1)
     }
 
     pub fn try_acquire_cost(&self, key: &str, cost: u64) -> Outcome {
-        todo!()
+        let now = Instant::now();
+
+        let entry = self.entry_for(key, now);
+        let mut e = entry.lock().unwrap();
+        e.last_activity = now;
+
+        match self.strategy {
+            Strategy::TokenBucket {
+                capacity,
+                refill_per_sec,
+            } => {
+                if let KeyState::TokenBucket {
+                    tokens,
+                    last_refill,
+                } = &mut e.state
+                {
+                    token_bucket_try(
+                        tokens,
+                        last_refill,
+                        capacity,
+                        refill_per_sec,
+                        now,
+                        cost as f64,
+                    )
+                } else {
+                    unreachable!("state/strategy mismatch")
+                }
+            }
+            Strategy::SlidingWindow { limit, window } => {
+                if let KeyState::SlidingWindow { grants } = &mut e.state {
+                    sliding_window_try(grants, limit, window, now, cost)
+                } else {
+                    unreachable!("state/strategy mismatch")
+                }
+            }
+        }
     }
 
     pub fn acquire(&self, key: &str, timeout: Duration) -> Outcome {
@@ -105,5 +151,80 @@ impl RateLimiter {
     pub fn evict_idle(&self) -> usize {
         todo!()
     }
+
+    fn entry_for(&self, key: &str, now: Instant) -> Arc<Mutex<Entry>> {
+        if let Some(e) = self.keys.read().unwrap().get(key) {
+            return e.clone();
+        }
+
+        let mut map = self.keys.write().unwrap();
+        map.entry(key.to_string()).or_insert_with(|| {
+            Arc::new(Mutex::new(Entry {
+                state: self.strategy.fresh_state(now),
+                last_activity: now,
+            }))
+        }).clone()
+    }
 }
 
+fn token_bucket_try(
+    tokens: &mut f64,
+    last_refill: &mut Instant,
+    capacity: f64,
+    refill_per_sec: f64,
+    now: Instant,
+    cost: f64,
+) -> Outcome {
+    let elapsed = now.duration_since(*last_refill).as_secs_f64();
+    *tokens = (*tokens + elapsed * refill_per_sec).min(capacity);
+    *last_refill = now;
+
+    if cost > capacity {
+        return Outcome::deny(None);
+    }
+    if *tokens >= cost {
+        *tokens -= cost;
+        Outcome::allow()
+    } else {
+        let deficit = cost - *tokens;
+        let retry = if refill_per_sec > 0.0 {
+            Some(Duration::from_secs_f64(deficit / refill_per_sec))
+        } else {
+            None
+        };
+        Outcome::deny(retry)
+    }
+}
+
+fn sliding_window_try(
+    grants: &mut VecDeque<Instant>,
+    limit: u64,
+    window: Duration,
+    now: Instant,
+    cost: u64,
+) -> Outcome {
+    while let Some(&front) = grants.front() {
+        if front + window <= now {
+            grants.pop_front();
+        } else {
+            break;
+        }
+    }
+
+    if cost > limit {
+        return Outcome::deny(None);
+    }
+
+    let count = grants.len() as u64;
+    if count + cost <= limit {
+        for _ in 0..cost {
+            grants.push_back(now);
+        }
+        Outcome::allow()
+    } else {
+        let k = (count + cost - limit) as usize;
+        let target = grants[k - 1];
+        let retry = (target + window).saturating_duration_since(now);
+        Outcome::deny(Some(retry))
+    }
+}

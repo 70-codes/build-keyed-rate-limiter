@@ -51,8 +51,10 @@ Started with lib.rs. Want to settle the public API before implementing the algor
 ### [10:01]
 Finished designing sketching the public API and set the contructors in place as well so the library can already create limiter instances, behavior methods are todo's for now, will implement the alogorithms at a time
 
-### [HH:MM]
-
+### [11:06]
+Added the per-key lookup helper instead of duplicating the map logic everywhere. Ended up matching on the strategy after locking the entry so both algorithms can share the same flow
+I also changed the implementation order slightly since both algorithms share the same entry path hance it was easire to get both non-blocking strategies working first and then build blocking acquire on top
+Had to change deny to take Option<Duration> — my first version forced a concrete Duration, but a request that can never succeed (cost > capacity, or refill=0) has no retry time to give. None = "don't bother waiting.
 ### [HH:MM]
 
 ## Research / References
@@ -62,6 +64,8 @@ Finished designing sketching the public API and set the contructors in place as 
 Instant- Documentation url (https://doc.rust-lang.org/std/time/struct.Instant.html) - Contained what i exactly needed which is a monotonic clock
 
 Duration - Documentation url (https://doc.rust-lang.org/std/time/struct.Duration.html) - Mostly checking helper methods.
+
+VecDeque - https://doc.rust-lang.org/std/collections/struct.VecDeque.html - Needed a queue where old timestamps come off the front and new grants are appended to the back, for the sliding window
 
 ## Retrospective
 
