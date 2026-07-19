@@ -59,6 +59,11 @@ Had to change deny to take Option<Duration> — my first version forced a concre
 ### [11:36]
 Was thinking acquire() would be its own implementation but it's really just retry + sleep around try_acquire_cost() finished the cleanup helpers toothe lib now feels feature complete, now I can move on to validating behaviour
 
+### [12:52]
+Started validating the by adding small unit tests for the stuff that doesn't need sleeping / real-clock timing. Leaving the timing-heavy requirements for main.rs.
+Also filled in the README with setup + run commands
+
+
 ## Research / References
 
 <!-- Optional. Any docs, articles, past code, or language references you looked at.
@@ -79,3 +84,7 @@ VecDeque - https://doc.rust-lang.org/std/collections/struct.VecDeque.html - Need
      - What would you do differently with more time?
      - What surprised you about this problem?
      - Anything you tried and threw away? Why? -->
+- The weakest part is probably the real clock tests since a heavily loaded machine could still affect the timing even with tolerance, with more time i'd cpnsider an injectable clock for deterministic tests
+- I expected blocking acquire to need it's own logic but it ended up being a simple retry loop over try_acquire_cost, which kept the implementation smaller
+- Manual eviction is another weak point since the caller has to remember to include to run it, i am okay with an evicted key returning with a full bucket as long as the idle TTL is longer than the refil time since it would have refilled while idle
+- for a larger scale I would probably look at sharding the key registry instead of having one RwLock around the whole map
