@@ -265,3 +265,57 @@ fn sliding_window_try(
         Outcome::deny(Some(retry))
     }
 }
+
+// unit tests for the parts that do not depend on real clock timing
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn burst_then_exhaust() {
+        let rl = RateLimiter::token_bucket(5.0, 0.0);
+        let allowed = (0..8).filter(|_| rl.try_acquire("k").allowed).count();
+        assert_eq!(
+            allowed, 5,
+            "a full bucket admits exactly capacity, then denies"
+        );
+    }
+
+    #[test]
+    fn cost_drains_in_one_step() {
+        let rl = RateLimiter::token_bucket(5.0, 0.0);
+        assert!(rl.try_acquire_cost("k", 5).allowed);
+        assert!(
+            !rl.try_acquire("k").allowed,
+            "bucket emptied by the cost-5 call"
+        );
+    }
+
+    #[test]
+    fn cost_over_capacity_is_impossible() {
+        let rl = RateLimiter::token_bucket(3.0, 100.0);
+        let out = rl.try_acquire_cost("k", 4);
+        assert!(!out.allowed);
+        assert_eq!(out.retry_after, None, "no wait can ever satisfy it");
+    }
+
+    #[test]
+    fn per_key_isolation() {
+        let rl = RateLimiter::token_bucket(2.0, 0.0);
+        assert!(rl.try_acquire("alice").allowed);
+        assert!(rl.try_acquire("alice").allowed);
+        assert!(!rl.try_acquire("alice").allowed, "alice exhausted");
+        assert!(rl.try_acquire("bob").allowed, "bob is unaffected");
+    }
+
+    #[test]
+    fn sliding_window_counts_within_window() {
+        let rl = RateLimiter::sliding_window(3, Duration::from_millis(1000));
+        assert!(rl.try_acquire("k").allowed);
+        assert!(rl.try_acquire("k").allowed);
+        assert!(rl.try_acquire("k").allowed);
+        let out = rl.try_acquire("k");
+        assert!(!out.allowed, "4th grant inside the window is denied");
+        assert!(out.retry_after.is_some());
+    }
+}
