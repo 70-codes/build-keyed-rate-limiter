@@ -1,0 +1,17 @@
+[package]
+name = "keyed_rate_limiter"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+
+[[bin]]
+name = "demo"
+path = "src/main.rs"
+
+[lib]
+name = "keyed_rate_limiter"
+path = "src/lib.rs"
+
+[profile.release]
+opt-level = 2

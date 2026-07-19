@@ -6,7 +6,7 @@
 
 ## Initial Reaction
 
-I need two alogorithms behing the same API and also check up the logic used by the algorithms for a deeper understanding
+I need two algorithms behind the same API and also check up the logic used by the algorithms for a deeper understanding
 I have to read on suitability between SystemTime and instant
 The concurrency requirement will probably be the trickiest part. I need to guarantee that multiple callers can't over-admit permits while also avoiding unnecessary contention between unrelated API keys
 Timing is also important. I already know I don't want to use wall-clock time because adjustments to the system clock would affect refill calculations
@@ -45,9 +45,11 @@ Not touching concurrency until basic limiter works.
 ### [08:26]
 Initialized the repo by creating the files and filled up some section of the thinking.md
 
-### [HH:MM]
+### [09:21]
+Started with lib.rs. Want to settle the public API before implementing the algorithms.
 
-### [HH:MM]
+### [10:01]
+Finished designing sketching the public API and set the contructors in place as well so the library can already create limiter instances, behavior methods are todo's for now, will implement the alogorithms at a time
 
 ### [HH:MM]
 
